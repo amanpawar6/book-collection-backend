@@ -69,11 +69,68 @@ const getBooks = async (req, res) => {
     } : {};
 
     try {
-        const books = await Book.find(searchQuery)
-            .limit(limit * 1)
-            .skip((page - 1) * limit)
-            .exec();
+        // const books = await Book.find(searchQuery)
+        //     .limit(limit * 1)
+        //     .skip((page - 1) * limit)
+        //     .exec();
+
+        const books = await Book.aggregate([
+            {
+                $match: searchQuery
+            },
+            {
+                $lookup: {
+                    from: "userbookreadstatuses",
+                    localField: "_id",
+                    foreignField: "bookId",
+                    as: "result"
+                }
+            },
+            {
+                $unwind: {
+                    path: "$result",
+                    // includeArrayIndex: 'string',
+                    preserveNullAndEmptyArrays: true
+                }
+            },
+            {
+                $project: {
+                    _id: "$_id",
+                    author: "$author",
+                    title: "$title",
+                    genre: "$genre",
+                    publicationYear: "$publicationYear",
+                    isDeleted: "$isDeleted",
+                    result: "$result",
+                    read: {
+                        $cond: {
+                            if: {
+                                $eq: ["$result.isDeleted", true]
+                            },
+                            then: false,
+                            else: {
+                                $cond: {
+                                    if: {
+                                        $eq: ["$result.isDeleted", false]
+                                    },
+                                    then: true,
+                                    else: false // Default value if isDeleted is not present or null
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            {
+                $limit: limit * 1
+            },
+            {
+                $skip: (page - 1) * limit
+            }
+        ]);
+
         const count = await Book.countDocuments(searchQuery);
+
         return sendResponse(res, responseCode?.SUCCESS, { data: books, totalPages: Math.ceil(count / limit), currentPage: page }, messages?.DATE_FETCHED);
     } catch (err) {
         // console.log(err);

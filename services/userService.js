@@ -4,11 +4,23 @@ const User = require('../models/Users');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const JWT_SECRET = 'your_jwt_secret';
+const { loginSchema } = require('../schema/loginSchema');
+const { signupSchema } = require('../schema/signupSchema');
 
 const loginHandler = async (req, res) => {
     const { email, password } = req.body;
 
     try {
+
+        const validate = loginSchema.validate({ email, password });
+
+        if (validate?.error) {
+            // console.log(JSON.stringify(validate));
+            let errorMessage = errorDetails(validate?.error?.details);
+            // console.log(errorMessage);
+            return sendResponse(res, 422, null, errorMessage);
+        }
+
         const user = await User.findOne({ email, isDeleted: false });
         if (!user) {
             return sendResponse(res, 400, null, 'Invalid email or password');
@@ -34,6 +46,16 @@ const signupHandler = async (req, res) => {
     const { firstName, lastName, email, userName, password } = req.body;
 
     try {
+
+        const validate = signupSchema.validate({ firstName, lastName, email, userName, password });
+
+        if (validate?.error) {
+            // console.log(JSON.stringify(validate));
+            let errorMessage = errorDetails(validate?.error?.details);
+            // console.log(errorMessage);
+            return sendResponse(res, 422, null, errorMessage);
+        }
+
         const existingUser = await User.findOne({ email });
         if (existingUser) {
             return sendResponse(res, 400, null, 'Email already exists');
