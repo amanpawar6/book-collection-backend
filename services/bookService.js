@@ -100,6 +100,7 @@ const getBooks = async (req, res) => {
                     title: "$title",
                     genre: "$genre",
                     publicationYear: "$publicationYear",
+                    coverImage: "$coverImage",
                     isDeleted: "$isDeleted",
                     result: "$result",
                     read: {
