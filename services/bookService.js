@@ -200,16 +200,18 @@ const userBookStatusToggle = async (req, res) => {
         // Check if the entry exists
         const existingStatus = await UserBookReadStatus.findOne({ customerId, bookId });
 
+        let result;
+
         if (existingStatus) {
             // Toggle isDeleted
             existingStatus.isDeleted = !existingStatus.isDeleted;
-            await existingStatus.save();
+            result = await existingStatus.save();   
         } else {
             // Create a new entry
-            await UserBookReadStatus.create({ customerId, bookId });
+            result = await UserBookReadStatus.create({ customerId, bookId });
         }
 
-        return sendResponse(res, 200, null, 'Book status toggled successfully');
+        return sendResponse(res, 200, result, 'Book status toggled successfully');
     } catch (error) {
         console.log(error);
         return sendResponse(res, 500, null, error?.message ?? "Error toggling book status");
@@ -229,6 +231,7 @@ const userBookStatusRead = async (req, res) => {
                 genre: book?.genre,
                 isDeleted: book?.isDeleted,
                 publicationYear: book?.publicationYear,
+                coverImage: book?.coverImage,
                 title: book?.title,
                 _id: book?._id,
                 read: true
@@ -255,6 +258,7 @@ const userBookStatusUnread = async (req, res) => {
                 genre: book?.genre,
                 isDeleted: book?.isDeleted,
                 publicationYear: book?.publicationYear,
+                coverImage: book?.coverImage,
                 title: book?.title,
                 _id: book?._id,
                 read: false
