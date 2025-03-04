@@ -117,7 +117,7 @@ router.get('/get-genres', getGenres);
  * /get-books-by-genre/{genre}:
  *   get:
  *     summary: Get books by genre
- *     description: Retrieve a list of books filtered by genre.
+ *     description: Retrieve a paginated list of books filtered by genre.
  *     parameters:
  *       - in: path
  *         name: genre
@@ -125,9 +125,39 @@ router.get('/get-genres', getGenres);
  *           type: string
  *         required: true
  *         description: Genre to filter by
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Page number
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Number of items per page
  *     responses:
  *       200:
  *         description: Books fetched successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Book'
+ *                 totalBooks:
+ *                   type: integer
+ *                   description: Total number of books matching the genre
+ *                 currentPage:
+ *                   type: integer
+ *                   description: Current page number
+ *                 totalPages:
+ *                   type: integer
+ *                   description: Total number of pages
  *       500:
  *         description: Internal server error
  */

@@ -154,19 +154,32 @@ const getGenres = async (req, res) => {
 
 const getBooksByGenres = async (req, res) => {
     try {
-
+        // Validate the genre parameter
         const validate = getBooksByGenreSchema.validate(req?.params);
-
         if (validate?.error) {
             return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
         }
 
-        let { genre } = req?.params;
+        const { genre } = req?.params;
+        const { page = 1, limit = 10 } = req?.query; // Default page = 1, limit = 10
 
-        const result = await Book.find({ genre: { $regex: genre, $options: 'i' } })
+        // Calculate skip value for pagination
+        const skip = (page - 1) * limit;
 
-        return sendResponse(res, RESPONSE_CODE?.SUCCESS, result?.length ? result : [], RESPONSE_MESSAGE?.DATA_FETCHED);
+        // Fetch books by genre with pagination
+        const books = await Book.find({ genre: { $regex: genre, $options: 'i' } })
+            .skip(skip)
+            .limit(parseInt(limit));
 
+        // Count total books matching the genre
+        const totalBooks = await Book.countDocuments({ genre: { $regex: genre, $options: 'i' } });
+
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, {
+            data: books,
+            totalBooks,
+            currentPage: parseInt(page),
+            totalPages: Math.ceil(totalBooks / limit),
+        }, RESPONSE_MESSAGE?.DATA_FETCHED);
     } catch (error) {
         console.log(error);
         throw error;
