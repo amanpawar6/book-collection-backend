@@ -205,7 +205,7 @@ const userBookStatusToggle = async (req, res) => {
         if (existingStatus) {
             // Toggle isDeleted
             existingStatus.isDeleted = !existingStatus.isDeleted;
-            result = await existingStatus.save();   
+            result = await existingStatus.save();
         } else {
             // Create a new entry
             result = await UserBookReadStatus.create({ customerId, bookId });
@@ -219,10 +219,17 @@ const userBookStatusToggle = async (req, res) => {
 }
 
 const userBookStatusRead = async (req, res) => {
-    const { customerId } = req.query;
+    const { customerId, page = 1, limit = 10 } = req.query;
 
     try {
-        const readBooks = await UserBookReadStatus.find({ customerId, isDeleted: false }).populate('bookId');
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const readBooks = await UserBookReadStatus.find({ customerId, isDeleted: false })
+            .populate('bookId')
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalCount = await UserBookReadStatus.countDocuments({ customerId, isDeleted: false });
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
 
         const books = readBooks.map((status) => {
             let book = status?.bookId;
@@ -238,7 +245,13 @@ const userBookStatusRead = async (req, res) => {
             };
         });
 
-        return sendResponse(res, 200, { data: books }, 'Book fetched successfully');
+        return sendResponse(res, 200, {
+            data: books,
+            totalItems: totalCount,
+            totalPages,
+            currentPage: parseInt(page),
+            pageSize: parseInt(limit)
+        }, 'Books fetched successfully');
     } catch (error) {
         console.log(error);
         return sendResponse(res, 500, null, error?.message ?? "Error fetching read books");
@@ -246,10 +259,17 @@ const userBookStatusRead = async (req, res) => {
 }
 
 const userBookStatusUnread = async (req, res) => {
-    const { customerId } = req.query;
+    const { customerId, page = 1, limit = 10 } = req.query;
 
     try {
-        const readBooks = await UserBookReadStatus.find({ customerId, isDeleted: true }).populate('bookId');
+        const skip = (parseInt(page) - 1) * parseInt(limit);
+        const readBooks = await UserBookReadStatus.find({ customerId, isDeleted: true })
+            .populate('bookId')
+            .skip(skip)
+            .limit(parseInt(limit));
+
+        const totalCount = await UserBookReadStatus.countDocuments({ customerId, isDeleted: true });
+        const totalPages = Math.ceil(totalCount / parseInt(limit));
 
         const books = readBooks.map((status) => {
             let book = status?.bookId;
@@ -265,7 +285,13 @@ const userBookStatusUnread = async (req, res) => {
             };
         });
 
-        return sendResponse(res, 200, { data: books }, 'Book fetched successfully');
+        return sendResponse(res, 200, {
+            data: books,
+            totalItems: totalCount,
+            totalPages,
+            currentPage: parseInt(page),
+            pageSize: parseInt(limit)
+        }, 'Books fetched successfully');
     } catch (error) {
         console.log(error);
         return sendResponse(res, 500, null, error?.message ?? "Error fetching read books");
