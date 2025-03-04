@@ -1,19 +1,10 @@
 const Book = require('../models/Book');
 const UserBookReadStatus = require('../models/UserBookReadStatus');
 const sendResponse = require('../utils/response');
-const { responseCode, messages } = require("../utils/constants");
-const { saveBookSchema } = require('../schema/saveBook');
-const { errorDetails } = require("../utils/customFunction");
-const AWS = require('aws-sdk');
-
-// Configure AWS SDK
-AWS.config.update({
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    region: process.env.AWS_REGION,
-});
-
-const s3 = new AWS.S3();
+const { saveBookSchema, getBookSchema, getBooksByGenreSchema, userBookStatusToggleSchema, userBookStatusSchema, getBookDetailsSchema } = require('../schema/exportSchema');
+const { RESPONSE_CODE, RESPONSE_MESSAGE } = require("../utils/constants");
+const s3Upload = require('../utils/s3Upload');
+const { isValidObjectId } = require('../utils/customFunction');
 
 const addBook = async (req, res) => {
     try {
@@ -23,22 +14,11 @@ const addBook = async (req, res) => {
         const validate = saveBookSchema.validate({ title, author, genre, publicationYear });
 
         if (validate?.error) {
-            // console.log(JSON.stringify(validate));
-            let errorMessage = errorDetails(validate?.error?.details);
-            // console.log(errorMessage);
-            return sendResponse(res, 422, null, errorMessage);
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
         }
 
         // Upload the file to S3
-        const params = {
-            Bucket: process.env.S3_BUCKET_NAME,
-            Key: `covers/${Date.now()}_${file.originalname}`, // Unique file name
-            Body: file.buffer,
-            ContentType: file.mimetype,
-            // ACL: 'public-read', // Make the file publicly accessible
-        };
-
-        const s3Response = await s3.upload(params).promise();
+        const s3Response = await s3Upload(file);
 
         // Create a new book with the S3 image URL
         const book = new Book({
@@ -51,28 +31,31 @@ const addBook = async (req, res) => {
 
         await book.save();
 
-        return sendResponse(res, 201, book, 'Book added successfully');
+        return sendResponse(res, RESPONSE_CODE?.CREATED, book, RESPONSE_MESSAGE?.DATA_ADDED);
     } catch (err) {
         console.log(err);
-        return sendResponse(res, 400, null, err.message);
+        throw err;
     }
 };
 
 const getBooks = async (req, res) => {
-    const { page = 1, limit = 10, query } = req?.query;
-    const searchQuery = query ? {
-        $or: [
-            { title: { $regex: query, $options: 'i' } },
-            { author: { $regex: query, $options: 'i' } },
-            { genre: { $regex: query, $options: 'i' } }
-        ]
-    } : {};
-
     try {
-        // const books = await Book.find(searchQuery)
-        //     .limit(limit * 1)
-        //     .skip((page - 1) * limit)
-        //     .exec();
+
+        const validate = getBookSchema.validate(req?.query);
+
+        if (validate?.error) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
+        const { page = 1, limit = 10, query } = req?.query;
+
+        const searchQuery = query ? {
+            $or: [
+                { title: { $regex: query, $options: 'i' } },
+                { author: { $regex: query, $options: 'i' } },
+                { genre: { $regex: query, $options: 'i' } }
+            ]
+        } : {};
 
         const books = await Book.aggregate([
             {
@@ -132,19 +115,10 @@ const getBooks = async (req, res) => {
 
         const count = await Book.countDocuments(searchQuery);
 
-        return sendResponse(res, responseCode?.SUCCESS, { data: books, totalPages: Math.ceil(count / limit), currentPage: page }, messages?.DATE_FETCHED);
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, { data: books, totalPages: Math.ceil(count / limit), currentPage: page }, RESPONSE_MESSAGE?.DATA_FETCHED);
     } catch (err) {
-        // console.log(err);
-        return sendResponse(res, 500, null, err.message);
-    }
-};
-
-const deleteBook = async (req, res) => {
-    try {
-        await Book.findByIdAndDelete(req?.params?.id);
-        sendResponse(res, 200, null, 'Book deleted successfully');
-    } catch (err) {
-        sendResponse(res, 500, null, err?.message);
+        console.log(err);
+        throw err;
     }
 };
 
@@ -170,33 +144,46 @@ const getGenres = async (req, res) => {
             response = result?.genre
         }
 
-        return sendResponse(res, 200, response, 'Genres fetched successfully.');
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, response, RESPONSE_MESSAGE?.DATA_FETCHED);
 
     } catch (error) {
         console.log(error);
-        return sendResponse(res, 500, null, error?.message);
+        throw error;
     }
 };
 
 const getBooksByGenres = async (req, res) => {
     try {
 
-        let { genre } = req.params;
+        const validate = getBooksByGenreSchema.validate(req?.params);
+
+        if (validate?.error) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
+        let { genre } = req?.params;
 
         const result = await Book.find({ genre: { $regex: genre, $options: 'i' } })
 
-        return sendResponse(res, 200, result?.length ? result : [], 'Genres fetched successfully.');
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, result?.length ? result : [], RESPONSE_MESSAGE?.DATA_FETCHED);
 
     } catch (error) {
         console.log(error);
-        return sendResponse(res, 500, null, error?.message);
+        throw error;
     }
 };
 
 const userBookStatusToggle = async (req, res) => {
-    const { customerId, bookId } = req.body;
-
     try {
+
+        const validate = userBookStatusToggleSchema.validate(req?.body);
+
+        if (validate?.error) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
+        const { customerId, bookId } = req.body;
+
         // Check if the entry exists
         const existingStatus = await UserBookReadStatus.findOne({ customerId, bookId });
 
@@ -211,17 +198,24 @@ const userBookStatusToggle = async (req, res) => {
             result = await UserBookReadStatus.create({ customerId, bookId });
         }
 
-        return sendResponse(res, 200, result, 'Book status toggled successfully');
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, result, RESPONSE_MESSAGE?.STATUS_UPDATED);
     } catch (error) {
         console.log(error);
-        return sendResponse(res, 500, null, error?.message ?? "Error toggling book status");
+        throw error;
     }
 }
 
 const userBookStatusRead = async (req, res) => {
-    const { customerId, page = 1, limit = 10 } = req.query;
-
     try {
+
+        const validate = userBookStatusSchema.validate(req?.query);
+
+        if (validate?.error) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
+        const { customerId, page = 1, limit = 10 } = req?.query;
+
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const readBooks = await UserBookReadStatus.find({ customerId, isDeleted: false })
             .populate('bookId')
@@ -245,23 +239,30 @@ const userBookStatusRead = async (req, res) => {
             };
         });
 
-        return sendResponse(res, 200, {
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, {
             data: books,
             totalItems: totalCount,
             totalPages,
             currentPage: parseInt(page),
             pageSize: parseInt(limit)
-        }, 'Books fetched successfully');
+        }, RESPONSE_MESSAGE?.DATA_FETCHED);
     } catch (error) {
         console.log(error);
-        return sendResponse(res, 500, null, error?.message ?? "Error fetching read books");
+        throw error;
     }
 }
 
 const userBookStatusUnread = async (req, res) => {
-    const { customerId, page = 1, limit = 10 } = req.query;
-
     try {
+
+        const validate = userBookStatusSchema.validate(req?.query);
+
+        if (validate?.error) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
+        const { customerId, page = 1, limit = 10 } = req?.query;
+
         const skip = (parseInt(page) - 1) * parseInt(limit);
         const readBooks = await UserBookReadStatus.find({ customerId, isDeleted: true })
             .populate('bookId')
@@ -285,30 +286,51 @@ const userBookStatusUnread = async (req, res) => {
             };
         });
 
-        return sendResponse(res, 200, {
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, {
             data: books,
             totalItems: totalCount,
             totalPages,
             currentPage: parseInt(page),
             pageSize: parseInt(limit)
-        }, 'Books fetched successfully');
+        }, RESPONSE_MESSAGE?.DATA_FETCHED);
     } catch (error) {
         console.log(error);
-        return sendResponse(res, 500, null, error?.message ?? "Error fetching read books");
+        throw error;
     }
 }
 
 const getBookDetails = async (req, res) => {
     try {
+
+        const validate = getBookDetailsSchema.validate(req?.params);
+
+        if (validate?.error) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
+        if (!isValidObjectId(req?.params?.id)) {
+            return sendResponse(res, RESPONSE_CODE?.UNPROCESSABLE_CONTENT, null, validate?.error?.details[0]?.message ?? RESPONSE_MESSAGE?.REQUEST_BODY_ERROR);
+        }
+
         const book = await Book.findById(req.params.id);
 
         if (!book) return sendResponse(res, 404, null, 'Book not found');
 
-        return sendResponse(res, 200, { data: book }, 'Book details fetched successfully');
+        return sendResponse(res, RESPONSE_CODE?.SUCCESS, { data: book }, RESPONSE_MESSAGE?.DATA_FETCHED);
 
     } catch (error) {
-        return sendResponse(res, 500, null, 'Failed to fetch book details');
+        console.log(error);
+        throw error;
     }
 };
 
-module.exports = { addBook, getBooks, deleteBook, getGenres, getBooksByGenres, userBookStatusToggle, userBookStatusRead, userBookStatusUnread, getBookDetails };
+module.exports = {
+    addBook,
+    getBooks,
+    getGenres,
+    getBooksByGenres,
+    userBookStatusToggle,
+    userBookStatusRead,
+    userBookStatusUnread,
+    getBookDetails
+};

@@ -6,8 +6,7 @@ const bookSchema = new mongoose.Schema({
     genre: { type: String, required: true },
     publicationYear: { type: Number, required: true },
     coverImage: { type: String },
-    // read: { type: Boolean, default: false },
-    isDeleted: { type: Boolean, default: false }
-});
+    isDeleted: { type: Boolean, default: false },
+}, { timestamps: true });
 
 module.exports = mongoose.model('Book', bookSchema);
