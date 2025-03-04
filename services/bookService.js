@@ -123,7 +123,7 @@ const getBooks = async (req, res) => {
                 }
             },
             {
-                $limit: limit * 1
+                $limit: limit * page
             },
             {
                 $skip: (page - 1) * limit
